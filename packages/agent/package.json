@@ -1,0 +1,24 @@
+{
+  "name": "@lens/agent",
+  "version": "0.1.0",
+  "description": "Lens agent — runs the device backend + ws-scrcpy + tunnel on your machine so the hosted Lens UI can drive your real Android devices.",
+  "bin": {
+    "lens-agent": "bin/lens-agent.js"
+  },
+  "main": "src/cli.js",
+  "scripts": {
+    "start": "node bin/lens-agent.js start",
+    "build": "pkg bin/lens-agent.js --targets node18-macos-arm64,node18-macos-x64 --out-path dist --public --compress GZip"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "tar": "^7.4.3"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "pkg": {
+    "assets": ["../../backend/**/*"],
+    "scripts": ["../../backend/src/**/*.js"]
+  }
+}

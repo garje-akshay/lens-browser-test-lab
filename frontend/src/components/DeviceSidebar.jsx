@@ -1,67 +1,53 @@
 'use client';
-import { memo, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Box, Stack, Typography, IconButton, TextField, InputAdornment, Collapse,
-  ListItemButton, ListItemText, Chip, Tooltip, Divider,
+  Box, Stack, Typography, IconButton, Chip, Tooltip, ListItemButton, ListItemText, Divider,
 } from '@mui/material';
-import SearchIcon from '@mui/icons-material/Search';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import PhoneIphoneIcon from '@mui/icons-material/PhoneIphone';
 import AndroidIcon from '@mui/icons-material/Android';
-import TabletMacIcon from '@mui/icons-material/TabletMac';
-import ClearAllIcon from '@mui/icons-material/ClearAll';
-import SelectAllIcon from '@mui/icons-material/SelectAll';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
-import { DEVICES } from '../config/devices';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { useLabStore } from '../store/useLabStore';
+import { api } from '../lib/api';
 
-const GROUPS = (() => {
-  const g = { iPhones: [], 'Android phones': [], Tablets: [] };
-  for (const d of DEVICES) {
-    if (d.category === 'tablet') g.Tablets.push(d);
-    else if (d.os === 'ios') g.iPhones.push(d);
-    else g['Android phones'].push(d);
-  }
-  return Object.entries(g);
-})();
-
-const GROUP_ICONS = {
-  iPhones: PhoneIphoneIcon,
-  'Android phones': AndroidIcon,
-  Tablets: TabletMacIcon,
-};
+// Lists real Android devices reported by the backend's `adb devices`. Auto-
+// refreshes every 4s so plugging/unplugging a phone is reflected without a
+// manual reload. No presets, no iframes — if the backend isn't reachable or
+// ADB isn't enabled, we surface that state instead of pretending.
 
 export default function DeviceSidebar({ collapsed, onToggle }) {
-  const selected = useLabStore((s) => s.selectedDeviceIds);
-  const toggleDevice = useLabStore((s) => s.toggleDevice);
-  const clearAll = useLabStore.getState;
+  const adbDevices = useLabStore((s) => s.adbDevices);
+  const setAdbDevices = useLabStore((s) => s.setAdbDevices);
+  const selectedAdbSerials = useLabStore((s) => s.selectedAdbSerials);
+  const toggleAdbDevice = useLabStore((s) => s.toggleAdbDevice);
 
-  const [q, setQ] = useState('');
-  const [openGroups, setOpenGroups] = useState({ iPhones: true, 'Android phones': true, Tablets: true });
+  const [state, setState] = useState({ enabled: null, error: null, loaded: false });
 
-  const filtered = useMemo(() => {
-    if (!q.trim()) return GROUPS;
-    const n = q.toLowerCase();
-    return GROUPS.map(([group, items]) => [
-      group,
-      items.filter((d) => d.name.toLowerCase().includes(n) || d.id.includes(n)),
-    ]).filter(([, items]) => items.length > 0);
-  }, [q]);
-
-  const selectAllInGroup = (items) => {
-    const sel = new Set(useLabStore.getState().selectedDeviceIds);
-    const allOn = items.every((d) => sel.has(d.id));
-    items.forEach((d) => {
-      const on = sel.has(d.id);
-      if (allOn ? on : !on) toggleDevice(d.id);
-    });
+  const refresh = async () => {
+    try {
+      const r = await api.listAdbDevices();
+      setState({ enabled: !!r.enabled, error: r.error || null, loaded: true });
+      setAdbDevices(r.devices || []);
+    } catch (e) {
+      setState({ enabled: false, error: e.message || 'Backend unreachable', loaded: true });
+      setAdbDevices([]);
+    }
   };
 
-  const clearSelection = () => {
-    const current = useLabStore.getState().selectedDeviceIds.slice();
-    current.forEach((id) => toggleDevice(id));
-  };
+  useEffect(() => {
+    let cancelled = false;
+    const tick = async () => { if (!cancelled) await refresh(); };
+    tick();
+    const id = setInterval(tick, 4000);
+    const onBackendChange = () => tick();
+    window.addEventListener('lens:backend-changed', onBackendChange);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+      window.removeEventListener('lens:backend-changed', onBackendChange);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (collapsed) {
     return (
@@ -69,114 +55,83 @@ export default function DeviceSidebar({ collapsed, onToggle }) {
         <Tooltip title="Open devices" placement="right">
           <IconButton onClick={onToggle} size="small"><MenuOpenIcon sx={{ transform: 'rotate(180deg)' }} /></IconButton>
         </Tooltip>
-        <Chip label={selected.length} size="small" color="primary" sx={{ mt: 1 }} />
+        <Chip label={adbDevices.length} size="small" color="success" sx={{ mt: 1 }} />
       </Box>
     );
   }
 
   return (
-    <Box
-      sx={{
-        width: 280,
-        flexShrink: 0,
-        borderRight: 1,
-        borderColor: 'divider',
-        bgcolor: 'background.paper',
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-      }}
-    >
+    <Box sx={{
+      width: 280, flexShrink: 0, borderRight: 1, borderColor: 'divider',
+      bgcolor: 'background.paper', display: 'flex', flexDirection: 'column', height: '100%',
+    }}>
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ px: 2, pt: 1.5, pb: 1 }}>
         <Stack direction="row" alignItems="center" gap={1}>
+          <AndroidIcon sx={{ color: '#3ddc84', fontSize: 18 }} />
           <Typography variant="overline" sx={{ fontWeight: 700, letterSpacing: 1 }}>Devices</Typography>
-          <Chip label={selected.length} size="small" color={selected.length ? 'primary' : 'default'} />
+          <Chip label={adbDevices.length} size="small" color={adbDevices.length ? 'success' : 'default'} />
         </Stack>
         <Stack direction="row">
-          <Tooltip title="Clear selection">
-            <span>
-              <IconButton size="small" onClick={clearSelection} disabled={!selected.length}>
-                <ClearAllIcon fontSize="small" />
-              </IconButton>
-            </span>
+          <Tooltip title="Refresh">
+            <IconButton size="small" onClick={refresh}><RefreshIcon fontSize="small" /></IconButton>
           </Tooltip>
           <Tooltip title="Collapse sidebar">
             <IconButton size="small" onClick={onToggle}><MenuOpenIcon fontSize="small" /></IconButton>
           </Tooltip>
         </Stack>
       </Stack>
-
-      <Box sx={{ px: 2, pb: 1 }}>
-        <TextField
-          fullWidth
-          size="small"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search devices"
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Box>
-
       <Divider />
 
       <Box sx={{ overflowY: 'auto', flex: 1, py: 0.5 }}>
-        {filtered.map(([group, items]) => {
-          const Icon = GROUP_ICONS[group];
-          const open = openGroups[group];
-          const onIn = items.filter((d) => selected.includes(d.id)).length;
+        {!state.loaded && (
+          <Box sx={{ px: 2, py: 2 }}>
+            <Typography variant="caption" color="text.secondary">Contacting backend…</Typography>
+          </Box>
+        )}
+
+        {state.loaded && !state.enabled && (
+          <Box sx={{ px: 2, py: 2 }}>
+            <Stack direction="row" gap={1} alignItems="flex-start">
+              <WarningAmberIcon sx={{ color: 'warning.main', fontSize: 18, mt: 0.25 }} />
+              <Box>
+                <Typography variant="body2" fontWeight={600}>Backend not ready</Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.5 }}>
+                  {state.error
+                    ? `Can't reach your backend (${state.error}). Check the cloud icon top-right.`
+                    : 'ADB is disabled on this backend. Run it locally with ADB_ENABLED=1 and point the cloud icon at its tunnel URL.'}
+                </Typography>
+              </Box>
+            </Stack>
+          </Box>
+        )}
+
+        {state.loaded && state.enabled && adbDevices.length === 0 && (
+          <Box sx={{ px: 2, py: 2 }}>
+            <Typography variant="body2" fontWeight={600}>No devices</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.5 }}>
+              Plug in an Android phone (with USB debugging on) or start an emulator. It will show up here automatically.
+            </Typography>
+          </Box>
+        )}
+
+        {adbDevices.map((d) => {
+          const isOn = selectedAdbSerials.includes(d.serial);
           return (
-            <Box key={group}>
-              <ListItemButton
-                onClick={() => setOpenGroups((s) => ({ ...s, [group]: !s[group] }))}
-                sx={{ py: 0.5, px: 2 }}
-              >
-                {open ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
-                <Icon fontSize="small" sx={{ mx: 1, opacity: 0.7 }} />
-                <ListItemText
-                  primary={group}
-                  primaryTypographyProps={{ variant: 'body2', fontWeight: 600 }}
-                  secondary={`${onIn}/${items.length}`}
-                  secondaryTypographyProps={{ variant: 'caption' }}
-                />
-                <Tooltip title={onIn === items.length ? 'Deselect group' : 'Select group'}>
-                  <IconButton
-                    size="small"
-                    onClick={(e) => { e.stopPropagation(); selectAllInGroup(items); }}
-                  >
-                    <SelectAllIcon fontSize="small" />
-                  </IconButton>
-                </Tooltip>
-              </ListItemButton>
-              <Collapse in={open} unmountOnExit>
-                {items.map((d) => {
-                  const isOn = selected.includes(d.id);
-                  return (
-                    <ListItemButton
-                      key={d.id}
-                      onClick={() => toggleDevice(d.id)}
-                      selected={isOn}
-                      sx={{ pl: 5, py: 0.5 }}
-                    >
-                      <ListItemText
-                        primary={d.name}
-                        primaryTypographyProps={{ variant: 'body2' }}
-                        secondary={`${d.viewport.width}×${d.viewport.height} · ${d.deviceScaleFactor}x`}
-                        secondaryTypographyProps={{ variant: 'caption', sx: { opacity: 0.7 } }}
-                      />
-                      {isOn && (
-                        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main' }} />
-                      )}
-                    </ListItemButton>
-                  );
-                })}
-              </Collapse>
-            </Box>
+            <ListItemButton
+              key={d.serial}
+              onClick={() => toggleAdbDevice(d.serial)}
+              selected={isOn}
+              sx={{ px: 2, py: 1 }}
+            >
+              <AndroidIcon fontSize="small" sx={{ color: '#3ddc84', mr: 1.5 }} />
+              <ListItemText
+                primary={d.model || d.serial}
+                primaryTypographyProps={{ variant: 'body2', fontWeight: 600 }}
+                secondary={d.serial}
+                secondaryTypographyProps={{ variant: 'caption', sx: { opacity: 0.7 } }}
+              />
+              {isOn && <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'success.main' }} />}
+            </ListItemButton>
           );
         })}
       </Box>

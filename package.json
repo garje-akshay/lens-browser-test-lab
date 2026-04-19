@@ -2,7 +2,7 @@
   "name": "browser-test-lab",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["frontend", "backend"],
+  "workspaces": ["frontend", "backend", "packages/agent"],
   "scripts": {
     "dev": "concurrently -n backend,frontend -c blue,green \"npm --workspace backend run dev\" \"npm --workspace frontend run dev\"",
     "dev:backend": "npm --workspace backend run dev",

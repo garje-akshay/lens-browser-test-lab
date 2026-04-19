@@ -1,49 +1,67 @@
-const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
-export const BACKEND_URL = BACKEND;
-export const BACKEND_WS = process.env.NEXT_PUBLIC_BACKEND_WS || 'ws://localhost:4000';
+// Backend URL resolution, in priority order:
+//   1. localStorage 'lens.backendUrl' — set by the user via the "Connect backend"
+//      UI, so anyone using the hosted frontend can point it at their own tunnel.
+//   2. NEXT_PUBLIC_BACKEND_URL — baked-in default for local dev.
+//   3. http://localhost:4000 — last-resort fallback.
+const ENV_BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+const LS_KEY = 'lens.backendUrl';
+
+export function getBackendUrl() {
+  if (typeof window !== 'undefined') {
+    const v = window.localStorage.getItem(LS_KEY);
+    if (v) return v.replace(/\/+$/, '');
+  }
+  return ENV_BACKEND.replace(/\/+$/, '');
+}
+
+export function setBackendUrl(url) {
+  if (typeof window === 'undefined') return;
+  const clean = (url || '').trim().replace(/\/+$/, '');
+  if (clean) window.localStorage.setItem(LS_KEY, clean);
+  else window.localStorage.removeItem(LS_KEY);
+  // Let any listener (DeviceSidebar, AdbDeviceFrame) rebuild against the
+  // new target.
+  window.dispatchEvent(new CustomEvent('lens:backend-changed'));
+}
 
 async function j(res) {
   if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
   return res.json();
 }
 
+const b = () => getBackendUrl();
+
 export const api = {
-  createSession: (deviceId, url, networkProfile) =>
-    fetch(`${BACKEND}/api/sessions`, {
+  health: (signal) =>
+    fetch(`${b()}/health`, { signal }).then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }),
+
+  listAdbDevices: () => fetch(`${b()}/api/adb/devices`).then(j),
+  adbNavigate: (serial, url) =>
+    fetch(`${b()}/api/adb/navigate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deviceId, url, networkProfile }),
+      body: JSON.stringify({ serial, url }),
     }).then(j),
 
-  navigate: (id, url) =>
-    fetch(`${BACKEND}/api/sessions/${id}/navigate`, {
+  adbDevtoolsAttach: (serial) =>
+    fetch(`${b()}/api/adb/devtools/attach`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ serial }),
     }).then(j),
-
-  reload: (id) =>
-    fetch(`${BACKEND}/api/sessions/${id}/reload`, { method: 'POST' }).then(j),
-
-  setNetwork: (id, profile) =>
-    fetch(`${BACKEND}/api/sessions/${id}/network`, {
+  adbDevtoolsDetach: (serial) =>
+    fetch(`${b()}/api/adb/devtools/detach`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile }),
+      body: JSON.stringify({ serial }),
     }).then(j),
-
-  screenshotUrl: (id) => `${BACKEND}/api/sessions/${id}/screenshot`,
-
-  close: (id) => fetch(`${BACKEND}/api/sessions/${id}`, { method: 'DELETE' }).then(j),
-
-  clearLogs: (id) => fetch(`${BACKEND}/api/sessions/${id}/logs`, { method: 'DELETE' }).then(j),
-
-  proxyUrl: (url) => `${BACKEND}/proxy/fetch?url=${encodeURIComponent(url)}`,
-
-  probeProxy: (url, signal) =>
-    fetch(`${BACKEND}/proxy/probe?url=${encodeURIComponent(url)}`, { signal })
-      .then(async (r) => {
-        const data = await r.json().catch(() => ({}));
-        return { ok: r.ok && data.ok !== false, error: data.error };
-      }),
+  adbDevtoolsEntries: (serial) =>
+    fetch(`${b()}/api/adb/devtools/${encodeURIComponent(serial)}/entries`).then(j),
+  adbDevtoolsClear: (serial) =>
+    fetch(`${b()}/api/adb/devtools/${encodeURIComponent(serial)}/clear`, { method: 'POST' }).then(j),
+  adbDevtoolsHarUrl: (serial) =>
+    `${b()}/api/adb/devtools/${encodeURIComponent(serial)}/har`,
 };
