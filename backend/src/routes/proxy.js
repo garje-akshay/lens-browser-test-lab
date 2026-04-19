@@ -165,9 +165,12 @@ router.get('/fetch', async (req, res) => {
   if (!target || !/^https?:\/\//i.test(target)) {
     return res.status(400).send('Invalid url');
   }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 25_000);
   try {
     const upstream = await fetch(target, {
       redirect: 'follow',
+      signal: controller.signal,
       headers: {
         'user-agent':
           req.headers['user-agent'] ||
@@ -203,7 +206,22 @@ router.get('/fetch', async (req, res) => {
     const buf = Buffer.from(await upstream.arrayBuffer());
     return res.send(buf);
   } catch (err) {
-    res.status(502).send(`Proxy error: ${err.message}`);
+    // Node's fetch() wraps the real cause in err.cause for network failures.
+    const cause = err.cause;
+    const code = cause?.code || cause?.errno;
+    let detail = err.message || 'unknown';
+    if (err.name === 'AbortError') detail = 'Upstream timed out after 25s';
+    else if (code === 'ENOTFOUND') detail = `DNS lookup failed for ${cause?.hostname || target}`;
+    else if (code === 'ECONNREFUSED') detail = 'Connection refused';
+    else if (code === 'CERT_HAS_EXPIRED') detail = 'Upstream TLS certificate expired';
+    else if (code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || code === 'DEPTH_ZERO_SELF_SIGNED_CERT') {
+      detail = 'Upstream TLS certificate invalid';
+    }
+    else if (cause?.message) detail = cause.message;
+    console.error(`[proxy] ${target} → ${detail}`, cause || err);
+    res.status(502).send(`Proxy error: ${detail}`);
+  } finally {
+    clearTimeout(timer);
   }
 });
 
