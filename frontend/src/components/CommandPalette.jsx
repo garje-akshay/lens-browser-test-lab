@@ -37,6 +37,8 @@ export default function CommandPalette({ open, onClose }) {
     const actions = [
       { id: 'a:mode-iframe', type: 'action', label: 'Switch to iframe mode', icon: BoltIcon,
         run: () => useLabStore.getState().setMode('iframe') },
+      { id: 'a:mode-real', type: 'action', label: 'Switch to emulator mode', icon: VerifiedIcon,
+        run: () => useLabStore.getState().setMode('real') },
       { id: 'a:theme', type: 'action', label: 'Toggle theme', icon: theme === 'dark' ? LightModeIcon : DarkModeIcon,
         run: () => { const s = useLabStore.getState(); s.setTheme(s.theme === 'dark' ? 'light' : 'dark'); } },
       { id: 'a:clear', type: 'action', label: 'Clear all selected devices', icon: ClearAllIcon,
