@@ -12,17 +12,22 @@ import AdbDevtoolsPanel from './AdbDevtoolsPanel';
 
 // ws-scrcpy is reverse-proxied by the backend at /ws-scrcpy — this way users
 // only expose ONE tunnel (the backend) and ws-scrcpy rides through it.
+// The hash format `#!action=stream&...` is ws-scrcpy's in-app router convention.
+// We explicitly set the ws param to ws-scrcpy's scrcpy WS endpoint on the same
+// host so the client doesn't default to 127.0.0.1:8886 (which is unreachable
+// from the hosted frontend).
 function buildStreamUrl(serial) {
   const base = `${getBackendUrl()}/ws-scrcpy`;
   const wsBase = base.replace(/^http/, 'ws');
-  // Params: action=stream + udid + player=mse + ws to ws-scrcpy's proxy
-  // endpoint. The hash format `#!action=stream&...` is the in-app router
-  // convention ws-scrcpy uses.
   const ws = `${wsBase}/?action=proxy-adb&remote=tcp:8886&udid=${encodeURIComponent(serial)}`;
+  // WebCodecs decodes H.264 directly in JS and works on every modern Chromium
+  // browser. MSE requires the source H.264 profile + level to exactly match a
+  // codec string the browser accepts, which fails on some Samsung devices
+  // where scrcpy emits a profile the MediaSource pipeline rejects silently.
   const q = new URLSearchParams({
     action: 'stream',
     udid: serial,
-    player: 'mse',
+    player: 'webcodecs',
     ws,
   });
   return `${base}/#!${q.toString()}`;

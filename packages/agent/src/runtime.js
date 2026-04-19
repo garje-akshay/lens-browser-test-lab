@@ -86,9 +86,27 @@ async function ensureWsScrcpy(log) {
   const npmBin = await resolveBin('npm');
   await runBlocking(nodeBin, [npmBin, 'install', '--no-audit', '--no-fund'], { cwd: WS_SCRCPY_DIR });
 
+  // Patch upstream bug: ws-scrcpy invokes scrcpy-server with a redirect in the
+  // wrong order (`2>&1 >/dev/null`), which sends stderr to the terminal fd and
+  // kills the process once adb shell detaches. Swap to `>/dev/null 2>&1`.
+  patchWsScrcpyRedirect(log);
+
   fs.writeFileSync(markerFile, WS_SCRCPY_VERSION);
   log('ws-scrcpy ready.');
   return WS_SCRCPY_DIR;
+}
+
+function patchWsScrcpyRedirect(log) {
+  const distPath = path.join(WS_SCRCPY_DIR, 'dist', 'index.js');
+  if (!fs.existsSync(distPath)) return;
+  const before = fs.readFileSync(distPath, 'utf8');
+  const after = before
+    .replace(/2>&1 >\/dev\/null/g, '>/dev/null 2>&1')
+    .replace(/2>&1 > \/dev\/null/g, '> /dev/null 2>&1');
+  if (after !== before) {
+    fs.writeFileSync(distPath, after);
+    log('Patched ws-scrcpy scrcpy-server launch redirect.');
+  }
 }
 
 function download(url, dest) {
