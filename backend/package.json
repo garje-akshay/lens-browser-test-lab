@@ -5,13 +5,12 @@
   "main": "src/server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
-    "postinstall": "playwright install chromium"
+    "start": "node src/server.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
-    "playwright": "^1.47.0",
+    "playwright": "1.47.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
