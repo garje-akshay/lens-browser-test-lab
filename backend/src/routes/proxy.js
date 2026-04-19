@@ -16,47 +16,111 @@ const BLOCKED_HEADERS = new Set([
   'cross-origin-opener-policy',
   'cross-origin-embedder-policy',
   'cross-origin-resource-policy',
-  'content-encoding', // upstream may be gzipped; we've already decoded
+  'content-encoding',
   'content-length',
   'transfer-encoding',
+  'strict-transport-security',
+  'permissions-policy',
+  'feature-policy',
+  'referrer-policy',
 ]);
 
 function proxify(absoluteUrl, reqHost) {
   return `${reqHost}/proxy/fetch?url=${encodeURIComponent(absoluteUrl)}`;
 }
 
+function rewriteUrl(val, baseUrl, reqHost) {
+  if (
+    !val ||
+    val.startsWith('javascript:') ||
+    val.startsWith('data:') ||
+    val.startsWith('blob:') ||
+    val.startsWith('#') ||
+    val.startsWith('mailto:') ||
+    val.startsWith('tel:')
+  ) return null;
+  try {
+    const abs = new URL(val, baseUrl).toString();
+    if (!/^https?:\/\//i.test(abs)) return null;
+    return proxify(abs, reqHost);
+  } catch {
+    return null;
+  }
+}
+
+function rewriteSrcset(val, baseUrl, reqHost) {
+  return val
+    .split(',')
+    .map((part) => {
+      const trimmed = part.trim();
+      if (!trimmed) return '';
+      const [url, ...rest] = trimmed.split(/\s+/);
+      const rewritten = rewriteUrl(url, baseUrl, reqHost);
+      return [(rewritten || url), ...rest].join(' ');
+    })
+    .join(', ');
+}
+
 function rewriteHtml(html, baseUrl, reqHost) {
-  const origin = new URL(baseUrl).origin;
-  // Remove any existing <base> so our injected one wins.
-  html = html.replace(/<base\s[^>]*>/gi, '');
-  // Rewrite absolute URLs and root-relative URLs in attributes.
-  // src=, href=, action= — both quoted forms.
+  // 1. Strip any inline CSP meta tags — they bypass response-header scrubbing.
   html = html.replace(
-    /\b(src|href|action)=("|')([^"'>\s]+)\2/gi,
+    /<meta[^>]+http-equiv=["']?(content-security-policy|x-frame-options)["']?[^>]*>/gi,
+    ''
+  );
+  // 2. Strip any <base> — we don't inject one; rewritten URLs are absolute via the proxy.
+  html = html.replace(/<base\s[^>]*>/gi, '');
+  // 3. Strip subresource integrity — rewritten responses won't match hashes.
+  html = html.replace(/\s+integrity=("|')[^"']*\1/gi, '');
+  // 4. Strip crossorigin — the proxy serves same-origin, no CORS needed.
+  html = html.replace(/\s+crossorigin(?:=("|')[^"']*\1)?/gi, '');
+
+  // Rewrite src / href / action / formaction / poster / data / xlink:href
+  html = html.replace(
+    /\b(src|href|action|formaction|poster|data|xlink:href)=("|')([^"']+)\2/gi,
     (m, attr, q, val) => {
-      if (val.startsWith('javascript:') || val.startsWith('data:') || val.startsWith('#') || val.startsWith('mailto:')) {
-        return m;
-      }
-      try {
-        const abs = new URL(val, baseUrl).toString();
-        return `${attr}=${q}${proxify(abs, reqHost)}${q}`;
-      } catch {
-        return m;
-      }
+      const rewritten = rewriteUrl(val, baseUrl, reqHost);
+      return rewritten ? `${attr}=${q}${rewritten}${q}` : m;
     }
   );
-  // Inject <base> + console bridge. The bridge forwards console.*,
-  // window.onerror, and unhandledrejection up to the parent window so the
-  // Log panel in iframe mode can display them.
-  const baseTag = `<base href="${origin}/">`;
+
+  // Rewrite srcset and imagesrcset.
+  html = html.replace(
+    /\b(srcset|imagesrcset)=("|')([^"']+)\2/gi,
+    (m, attr, q, val) => `${attr}=${q}${rewriteSrcset(val, baseUrl, reqHost)}${q}`
+  );
+
+  // Rewrite <style>...</style> blocks (url(...) inside).
+  html = html.replace(/<style\b[^>]*>([\s\S]*?)<\/style>/gi, (m, css) => {
+    return m.replace(css, rewriteCss(css, baseUrl, reqHost));
+  });
+
+  // Rewrite inline style="..." url(...) references.
+  html = html.replace(/\bstyle=("|')([^"']+)\1/gi, (m, q, css) => {
+    return `style=${q}${rewriteCss(css, baseUrl, reqHost)}${q}`;
+  });
+
+  // Inject the console bridge at the top of <head>.
   const bridgeTag = `<script>(${CONSOLE_BRIDGE.toString()})();</script>`;
-  const injected = baseTag + bridgeTag;
   if (/<head[^>]*>/i.test(html)) {
-    html = html.replace(/<head[^>]*>/i, (m) => `${m}${injected}`);
+    html = html.replace(/<head[^>]*>/i, (m) => `${m}${bridgeTag}`);
   } else {
-    html = injected + html;
+    html = bridgeTag + html;
   }
   return html;
+}
+
+function rewriteCss(css, baseUrl, reqHost) {
+  // url(...) references.
+  css = css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (m, q, val) => {
+    const rewritten = rewriteUrl(val, baseUrl, reqHost);
+    return rewritten ? `url(${q}${rewritten}${q})` : m;
+  });
+  // @import "..." and @import url(...).
+  css = css.replace(/@import\s+(['"])([^'"]+)\1/g, (m, q, val) => {
+    const rewritten = rewriteUrl(val, baseUrl, reqHost);
+    return rewritten ? `@import ${q}${rewritten}${q}` : m;
+  });
+  return css;
 }
 
 // Runs inside the proxied page. Keep it standalone (no closures), since it's
@@ -107,16 +171,20 @@ router.get('/fetch', async (req, res) => {
       headers: {
         'user-agent':
           req.headers['user-agent'] ||
-          'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
         accept: req.headers['accept'] || '*/*',
         'accept-language': req.headers['accept-language'] || 'en-US,en;q=0.9',
       },
     });
 
-    // Copy headers except the blocked ones.
     for (const [k, v] of upstream.headers.entries()) {
       if (!BLOCKED_HEADERS.has(k.toLowerCase())) res.setHeader(k, v);
     }
+    // Permissive CORS so the iframe page can load subresources that request it.
+    res.setHeader('access-control-allow-origin', '*');
+    res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
+    res.setHeader('access-control-allow-headers', '*');
+
     res.status(upstream.status);
 
     const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
@@ -128,18 +196,8 @@ router.get('/fetch', async (req, res) => {
       return res.send(rewriteHtml(html, finalUrl, reqHost));
     }
     if (contentType.includes('text/css')) {
-      let css = await upstream.text();
-      // Rewrite url(...) references in CSS.
-      css = css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g, (m, q, val) => {
-        if (val.startsWith('data:')) return m;
-        try {
-          const abs = new URL(val, finalUrl).toString();
-          return `url(${q}${proxify(abs, reqHost)}${q})`;
-        } catch {
-          return m;
-        }
-      });
-      return res.send(css);
+      const css = await upstream.text();
+      return res.send(rewriteCss(css, finalUrl, reqHost));
     }
 
     const buf = Buffer.from(await upstream.arrayBuffer());
