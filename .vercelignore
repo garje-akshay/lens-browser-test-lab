@@ -1,0 +1,7 @@
+backend
+shared
+node_modules
+**/node_modules
+**/.next
+.git
+README.md

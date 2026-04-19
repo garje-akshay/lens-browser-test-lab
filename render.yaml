@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: lens-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: CORS_ORIGIN
+        value: https://browser-test-lab.vercel.app
+      - key: FRAME_FPS
+        value: "3"
+      - key: MAX_SESSIONS
+        value: "4"
+    healthCheckPath: /health

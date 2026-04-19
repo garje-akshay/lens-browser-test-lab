@@ -1,0 +1,166 @@
+html, body, #__next { height: 100%; margin: 0; }
+
+/* --- Emulator device chrome --------------------------------------------
+ * Two OS skins: `.skin-ios` (rounded bezel, Dynamic-Island-style pill,
+ * home indicator bar) and `.skin-android` (square-ish bezel, top notification
+ * strip). Tablets use a flatter, thinner bezel.
+ */
+
+.skin {
+  position: relative;
+  padding: 14px;
+  background: linear-gradient(160deg, #1a1d25 0%, #0d0f14 100%);
+  box-shadow:
+    0 30px 60px -30px rgba(0, 0, 0, 0.65),
+    0 2px 0 rgba(255, 255, 255, 0.05) inset,
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+}
+.skin .screen {
+  position: relative;
+  background: #000;
+  overflow: hidden;
+}
+.skin.tablet { padding: 12px; }
+
+/* iPhone with Dynamic Island */
+.skin-ios {
+  border-radius: 44px;
+}
+.skin-ios .screen {
+  border-radius: 32px;
+}
+.skin-ios.tablet {
+  border-radius: 22px;
+}
+.skin-ios.tablet .screen {
+  border-radius: 14px;
+}
+/* Dynamic Island */
+.skin-ios.has-island::before {
+  content: '';
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 110px;
+  height: 30px;
+  background: #000;
+  border-radius: 20px;
+  z-index: 5;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.04);
+}
+/* Home indicator bar */
+.skin-ios:not(.tablet)::after {
+  content: '';
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34%;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.85);
+  z-index: 5;
+}
+
+/* Android phone: square corners, subtle camera punch-hole */
+.skin-android {
+  border-radius: 30px;
+}
+.skin-android .screen {
+  border-radius: 20px;
+}
+.skin-android.tablet {
+  border-radius: 16px;
+}
+.skin-android.tablet .screen {
+  border-radius: 8px;
+}
+.skin-android::before {
+  content: '';
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  background: #000;
+  border-radius: 50%;
+  z-index: 5;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.06);
+}
+
+/* Status bar — painted on top of the screen so the page below scrolls under it */
+.status-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  font-family: -apple-system, "SF Pro Text", system-ui, Roboto, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.35), rgba(0,0,0,0));
+}
+.status-bar.android {
+  font-family: Roboto, "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+}
+.status-bar .left { flex: 1; }
+.status-bar .right { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Signal/wifi/battery mini icons drawn with pure CSS */
+.sb-icon {
+  width: 14px;
+  height: 10px;
+  background: #fff;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+.sb-signal {
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 10'><rect x='0' y='7' width='3' height='3' rx='0.5'/><rect x='4' y='5' width='3' height='5' rx='0.5'/><rect x='8' y='2' width='3' height='8' rx='0.5'/><rect x='12' y='0' width='3' height='10' rx='0.5'/></svg>");
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 18 10'><rect x='0' y='7' width='3' height='3' rx='0.5'/><rect x='4' y='5' width='3' height='5' rx='0.5'/><rect x='8' y='2' width='3' height='8' rx='0.5'/><rect x='12' y='0' width='3' height='10' rx='0.5'/></svg>");
+}
+.sb-wifi {
+  width: 15px;
+  -webkit-mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 12'><path d='M8 11 L6 9 a3 3 0 0 1 4 0 Z' fill='white'/><path d='M8 6 a6 6 0 0 0 -5 2 l1.5 1.5 a4 4 0 0 1 7 0 L13 8 A6 6 0 0 0 8 6 Z' fill='white'/><path d='M8 1.5 a10 10 0 0 0 -8 3.5 L1.5 6.5 a8 8 0 0 1 13 0 L16 5 a10 10 0 0 0 -8 -3.5 Z' fill='white'/></svg>");
+  mask-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 12'><path d='M8 11 L6 9 a3 3 0 0 1 4 0 Z' fill='white'/><path d='M8 6 a6 6 0 0 0 -5 2 l1.5 1.5 a4 4 0 0 1 7 0 L13 8 A6 6 0 0 0 8 6 Z' fill='white'/><path d='M8 1.5 a10 10 0 0 0 -8 3.5 L1.5 6.5 a8 8 0 0 1 13 0 L16 5 a10 10 0 0 0 -8 -3.5 Z' fill='white'/></svg>");
+}
+.sb-battery {
+  width: 22px;
+  height: 11px;
+  border: 1px solid rgba(255,255,255,0.9);
+  border-radius: 3px;
+  background: transparent;
+  position: relative;
+  padding: 1px;
+  box-sizing: border-box;
+}
+.sb-battery::before {
+  content: '';
+  display: block;
+  width: 80%;
+  height: 100%;
+  background: #fff;
+  border-radius: 1px;
+}
+.sb-battery::after {
+  content: '';
+  position: absolute;
+  right: -3px;
+  top: 3px;
+  width: 2px;
+  height: 4px;
+  background: rgba(255,255,255,0.9);
+  border-radius: 0 1px 1px 0;
+}
