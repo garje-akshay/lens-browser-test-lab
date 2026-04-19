@@ -21,7 +21,17 @@ const WSSCRCPY_PORT = 8000;
 // Homebrew installs to /opt/homebrew (Apple Silicon) or /usr/local (Intel);
 // include both so prereq detection and spawned children find their tools
 // even when launched outside a login shell (Finder, launchd).
-const BREW_PATHS = ['/opt/homebrew/bin', '/usr/local/bin'];
+//
+// ws-scrcpy 0.8.1 pulls node-pty 0.10.1 which doesn't compile against newer
+// V8 APIs (fails on Node 22+). Pin its runtime to node@20 via keg-only
+// prefixes so users who already have a newer `node` on PATH still get a
+// working ws-scrcpy. `brew install node@20` is declared as a formula dep.
+const BREW_PATHS = [
+  '/opt/homebrew/opt/node@20/bin',
+  '/usr/local/opt/node@20/bin',
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+];
 
 function brewEnv(extra = {}) {
   const PATH = [...BREW_PATHS, process.env.PATH || ''].join(':');
@@ -128,12 +138,25 @@ function startChild(name, cmd, args, { cwd, env } = {}) {
 }
 
 async function waitForTunnelUrl(logPath, timeoutMs = 30000) {
+  // Logs are append-only across restarts, so the file may contain URLs from
+  // previous runs. Only scan content written after this call began, and
+  // return the LAST match (most recent) rather than the first.
+  const startOffset = fs.existsSync(logPath) ? fs.statSync(logPath).size : 0;
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (fs.existsSync(logPath)) {
-      const text = fs.readFileSync(logPath, 'utf8');
-      const m = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
-      if (m) return m[0];
+      const fd = fs.openSync(logPath, 'r');
+      try {
+        const size = fs.fstatSync(fd).size;
+        if (size > startOffset) {
+          const buf = Buffer.alloc(size - startOffset);
+          fs.readSync(fd, buf, 0, buf.length, startOffset);
+          const matches = buf.toString('utf8').match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/g);
+          if (matches && matches.length) return matches[matches.length - 1];
+        }
+      } finally {
+        fs.closeSync(fd);
+      }
     }
     await sleep(500);
   }

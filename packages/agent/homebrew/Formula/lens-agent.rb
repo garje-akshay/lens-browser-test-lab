@@ -1,14 +1,18 @@
 class LensAgent < Formula
   desc "Lens agent — run the device backend + ws-scrcpy + tunnel on your Mac"
   homepage "https://github.com/garje-akshay/lens"
-  version "0.1.0"
+  version "0.1.1"
   license "MIT"
 
   # android-platform-tools is a cask, not a formula, so it can't be declared
   # as depends_on here. `lens-agent doctor` checks for adb at runtime and
   # prints the cask-install hint if it's missing.
+  #
+  # ws-scrcpy 0.8.1 bundles node-pty 0.10.1 which fails to compile on Node 22+
+  # (V8 API changes), so we pin the runtime to node@20. The agent prepends
+  # /opt/homebrew/opt/node@20/bin to PATH when spawning children.
   depends_on "cloudflared"
-  depends_on "node"
+  depends_on "node@20"
 
   def caveats
     <<~EOS
@@ -21,11 +25,11 @@ class LensAgent < Formula
   on_macos do
     on_arm do
       url "https://github.com/garje-akshay/homebrew-lens/releases/download/v#{version}/lens-agent-arm64"
-      sha256 "56febb0f292ca7429f5da971e14acac4f0779da1bb3bde05b42243b85c6c38a8"
+      sha256 "05fc97d94e1c89622f4a528357ba7d87a62138148958781ffb0366141229b748"
     end
     on_intel do
       url "https://github.com/garje-akshay/homebrew-lens/releases/download/v#{version}/lens-agent-x64"
-      sha256 "e72f5c1896900998928a729af861f50ab1a8b0aef9e520d93c5d0d66e25c6b61"
+      sha256 "91d61bbc8a5ac0cbd4a0de53c42a7e1204b4301f38e1540980135a8cc498c238"
     end
   end
 

@@ -36,9 +36,9 @@
 4. Paste the new sha256 values into the formula, commit, push.
 5. `brew update && brew upgrade lens-agent` on a test Mac.
 
-## Current v0.1.0 checksums
+## Current v0.1.1 checksums
 
 ```
-arm64: 56febb0f292ca7429f5da971e14acac4f0779da1bb3bde05b42243b85c6c38a8
-x64:   e72f5c1896900998928a729af861f50ab1a8b0aef9e520d93c5d0d66e25c6b61
+arm64: 05fc97d94e1c89622f4a528357ba7d87a62138148958781ffb0366141229b748
+x64:   91d61bbc8a5ac0cbd4a0de53c42a7e1204b4301f38e1540980135a8cc498c238
 ```
