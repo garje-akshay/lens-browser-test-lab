@@ -51,6 +51,10 @@ class Session {
       });
     });
     this.page.on('pageerror', (err) => {
+      // Filter common "ReferenceError: X is not defined" noise from third-party
+      // scripts that load out of order — these are harmless and very loud on
+      // sites with lots of analytics/marketing tags.
+      if (/ReferenceError:.* is not defined/.test(err.message)) return;
       this.pushLog({
         level: 'error',
         source: 'pageerror',
@@ -102,7 +106,11 @@ class Session {
     this.page = await this.context.newPage();
     this.attachPageListeners();
     await this.applyNetworkProfile(this.networkProfile);
-    await this.page.goto(this.url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await this.page.goto(this.url, { waitUntil: 'load', timeout: 45000 }).catch(() => {});
+    // Let client-side scripts (hydration, analytics, animation) settle before
+    // we start streaming frames — otherwise the first few frames show the
+    // pre-JS skeleton which makes the page look broken.
+    await this.page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
 
     this.startStreaming();
   }
@@ -132,7 +140,7 @@ class Session {
       if (inflight) return; // previous screenshot still running — coalesce.
       inflight = true;
       try {
-        const buf = await this.page.screenshot({ type: 'jpeg', quality: 50, fullPage: false });
+        const buf = await this.page.screenshot({ type: 'jpeg', quality: 72, fullPage: false });
         const frame = buf.toString('base64');
         const msg = JSON.stringify({ type: 'frame', sessionId: this.id, data: frame });
         for (const ws of this.subscribers) {
@@ -151,11 +159,14 @@ class Session {
   async navigate(url) {
     this.url = url;
     if (!this.page) return;
-    await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+    await this.page.goto(url, { waitUntil: 'load', timeout: 45000 }).catch(() => {});
+    await this.page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
   }
 
   async reload() {
-    if (this.page) await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    if (!this.page) return;
+    await this.page.reload({ waitUntil: 'load', timeout: 45000 }).catch(() => {});
+    await this.page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => {});
   }
 
   async scroll({ x, y }) {
