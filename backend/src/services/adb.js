@@ -77,6 +77,22 @@ async function screenshot(serial) {
   return stdout;
 }
 
+// Parse `adb shell wm size`, which prints either:
+//   Physical size: 1080x2400
+// or, when DPI override is active:
+//   Physical size: 1080x2400
+//   Override size: 720x1600
+// We prefer Override (matches what's actually rendered) and fall back to
+// Physical.
+async function getScreenSize(serial) {
+  const { stdout } = await execFileAsync('adb', ['-s', serial, 'shell', 'wm', 'size'], { timeout: 5000 });
+  const override = stdout.match(/Override size:\s*(\d+)x(\d+)/);
+  const physical = stdout.match(/Physical size:\s*(\d+)x(\d+)/);
+  const m = override || physical;
+  if (!m) throw new Error('could not parse screen size');
+  return { width: parseInt(m[1], 10), height: parseInt(m[2], 10) };
+}
+
 function closeAll() {
   for (const [, proc] of scrcpyProcs) {
     try { proc.kill('SIGTERM'); } catch {}
@@ -84,4 +100,4 @@ function closeAll() {
   scrcpyProcs.clear();
 }
 
-module.exports = { listDevices, launchScrcpy, closeScrcpy, openUrl, screenshot, closeAll };
+module.exports = { listDevices, launchScrcpy, closeScrcpy, openUrl, screenshot, getScreenSize, closeAll };

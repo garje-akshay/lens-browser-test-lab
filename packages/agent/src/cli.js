@@ -9,7 +9,7 @@ const program = new Command();
 program
   .name('lens-agent')
   .description('Run the Lens device backend + ws-scrcpy + tunnel on your machine')
-  .version('0.1.2');
+  .version('0.1.3');
 
 program
   .command('start')

@@ -93,6 +93,15 @@ router.get('/devtools/:serial/har', (req, res) => {
   res.send(JSON.stringify(har, null, 2));
 });
 
+router.get('/size/:serial', async (req, res) => {
+  try {
+    const size = await adb.getScreenSize(req.params.serial);
+    res.json({ ok: true, ...size });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/screenshot', async (req, res) => {
   const serial = req.query.serial;
   if (!serial) return res.status(400).json({ error: 'serial required' });

@@ -33,11 +33,11 @@ function buildStreamUrl(serial) {
   return `${base}/#!${q.toString()}`;
 }
 
-// Default canvas size for an Android phone frame. User can drag the bottom-
-// right corner to resize; we keep the ~1:2 aspect ratio so the stream stays
-// phone-shaped. The iframe itself is responsive — ws-scrcpy scales the video.
+// Default frame width; height is derived from the device's real screen
+// aspect (fetched via /api/adb/size) so the iframe matches the panel and we
+// don't get letterbox gaps.
 const FRAME_WIDTH = 380;
-const FRAME_HEIGHT = 760;
+const FALLBACK_ASPECT = 2; // 1:2 for devices we can't query (fallback only)
 const MIN_W = 220;
 const MAX_W = 900;
 
@@ -48,8 +48,22 @@ function AdbDeviceFrame({ serial }) {
   const device = adbDevices.find((d) => d.serial === serial);
   const [reloadKey, setReloadKey] = useState(0);
   const [pushing, setPushing] = useState(false);
-  const [size, setSize] = useState({ w: FRAME_WIDTH, h: FRAME_HEIGHT });
+  const [size, setSize] = useState({ w: FRAME_WIDTH, h: Math.round(FRAME_WIDTH * FALLBACK_ASPECT) });
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
+
+  // Fetch the device's real screen aspect ratio once so the frame matches
+  // what scrcpy emits (otherwise we letterbox → visible gap around the video).
+  useEffect(() => {
+    let cancelled = false;
+    api.adbSize(serial)
+      .then(({ width, height }) => {
+        if (cancelled || !width || !height) return;
+        const aspect = height / width;
+        setSize((s) => ({ w: s.w, h: Math.round(s.w * aspect) }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [serial]);
   // Bump when the user updates the backend URL so the iframe src (and thus
   // the ws:// upgrade) rebuild against the new tunnel.
   const [backendTick, setBackendTick] = useState(0);

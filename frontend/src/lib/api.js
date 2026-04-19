@@ -39,6 +39,8 @@ export const api = {
     }),
 
   listAdbDevices: () => fetch(`${b()}/api/adb/devices`).then(j),
+  adbSize: (serial) =>
+    fetch(`${b()}/api/adb/size/${encodeURIComponent(serial)}`).then(j),
   adbNavigate: (serial, url) =>
     fetch(`${b()}/api/adb/navigate`, {
       method: 'POST',
