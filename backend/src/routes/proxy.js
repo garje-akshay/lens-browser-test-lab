@@ -231,7 +231,12 @@ router.get('/fetch', async (req, res) => {
     res.status(upstream.status);
 
     const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
-    const reqHost = `${req.protocol}://${req.get('host')}`;
+    // Prefer x-forwarded-proto (Render edge) and fall back to req.protocol. Hosts
+    // on *.onrender.com always serve HTTPS at the edge even if the container sees http.
+    const fwdProto = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    const host = req.get('host') || '';
+    const proto = fwdProto || (/\.onrender\.com$/i.test(host) ? 'https' : req.protocol);
+    const reqHost = `${proto}://${host}`;
     const finalUrl = upstream.url || target;
 
     if (contentType.includes('text/html')) {

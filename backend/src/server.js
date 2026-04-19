@@ -8,6 +8,9 @@ const { attachWebSocket } = require('./services/wsHub');
 const { closeAll } = require('./services/sessionManager');
 
 const app = express();
+// Render terminates TLS at the edge and forwards as HTTP — trust x-forwarded-*
+// so req.protocol reflects the real scheme (used when rewriting proxy URLs).
+app.set('trust proxy', true);
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json({ limit: '1mb' }));
 
