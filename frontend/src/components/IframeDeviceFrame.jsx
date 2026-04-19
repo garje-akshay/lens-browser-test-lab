@@ -7,12 +7,22 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import TerminalIcon from '@mui/icons-material/Terminal';
 import AppleIcon from '@mui/icons-material/Apple';
 import AndroidIcon from '@mui/icons-material/Android';
+import LockIcon from '@mui/icons-material/Lock';
 import { useDeviceConfig, scrollBus } from '../store/useLabStore';
 import { api } from '../lib/api';
 import { downloadPng } from '../lib/download';
 import LogPanel from './LogPanel';
 import DeviceSettings from './DeviceSettings';
 import DeviceChrome from './DeviceChrome';
+
+const BLOCKED_HOSTS = /(^|\.)(facebook|fb|instagram|linkedin|twitter|x|google|accounts\.google|mail\.google|youtube|chase|bankofamerica|wellsfargo)\.com$/i;
+
+function isLikelyBlocked(urlStr) {
+  try {
+    const host = new URL(urlStr).hostname;
+    return BLOCKED_HOSTS.test(host);
+  } catch { return false; }
+}
 
 function IframeDeviceFrame({ device }) {
   const config = useDeviceConfig(device.id);
@@ -26,6 +36,7 @@ function IframeDeviceFrame({ device }) {
   const [showSettings, setShowSettings] = useState(false);
   const [logs, setLogs] = useState([]);
   const [snapping, setSnapping] = useState(false);
+  const blocked = isLikelyBlocked(url);
 
   const { width, height } = applyOrientation(device.viewport, orientation);
   const src = useProxy ? api.proxyUrl(url) : url;
@@ -90,17 +101,21 @@ function IframeDeviceFrame({ device }) {
         onScreenshot={onScreenshot}
         overridden={overridden}
       >
-        <iframe
-          ref={iframeRef}
-          key={`${src}-${reloadTick}`}
-          src={src}
-          title={device.name}
-          width={width}
-          height={height}
-          referrerPolicy="no-referrer"
-          loading="lazy"
-          style={{ border: 0, width, height, background: '#fff' }}
-        />
+        {blocked ? (
+          <BlockedOverlay width={width} height={height} url={url} />
+        ) : (
+          <iframe
+            ref={iframeRef}
+            key={`${src}-${reloadTick}`}
+            src={src}
+            title={device.name}
+            width={width}
+            height={height}
+            referrerPolicy="no-referrer"
+            loading="lazy"
+            style={{ border: 0, width, height, background: '#fff' }}
+          />
+        )}
       </FrameShell>
       {showSettings && (
         <Box sx={{ width: Math.max(width, 320) }}>
@@ -182,6 +197,34 @@ export const FrameShell = memo(function FrameShell({
         {children}
       </DeviceChrome>
     </Stack>
+  );
+});
+
+const BlockedOverlay = memo(function BlockedOverlay({ width, height, url }) {
+  let host = '';
+  try { host = new URL(url).hostname; } catch {}
+  return (
+    <Box sx={{
+      width, height, background: '#fff',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      p: 3, textAlign: 'center',
+    }}>
+      <Stack alignItems="center" gap={1.5} sx={{ maxWidth: 280 }}>
+        <Box sx={{
+          width: 48, height: 48, borderRadius: '50%',
+          background: 'linear-gradient(135deg, rgba(99,102,241,0.12), rgba(34,211,238,0.12))',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <LockIcon sx={{ color: 'primary.main' }} />
+        </Box>
+        <Typography variant="subtitle2" fontWeight={700}>
+          {host} blocks embedding
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.5 }}>
+          This site enforces strict anti-framing and bot protection. Real-device emulator mode (coming soon) will render it properly.
+        </Typography>
+      </Stack>
+    </Box>
   );
 });
 

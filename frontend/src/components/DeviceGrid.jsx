@@ -73,7 +73,7 @@ export default DeviceGrid;
 
 const PRESETS = [
   { label: 'Popular phones', ids: ['iphone-14-pro', 'pixel-7', 'galaxy-s22', 'iphone-se'], icon: PhoneIphoneIcon },
-  { label: 'Flagship pair', mode: 'real', ids: ['iphone-15-pro', 'pixel-8'], icon: VerifiedIcon },
+  { label: 'Flagship pair', ids: ['iphone-15-pro', 'pixel-8'], icon: VerifiedIcon },
   { label: 'Size range', ids: ['iphone-se', 'galaxy-fold', 'iphone-14-pro-max', 'ipad-mini'], icon: StraightenIcon },
   { label: 'Tablets', ids: ['ipad-10', 'ipad-pro-11', 'galaxy-tab-s8'], icon: TabletIcon },
 ];
@@ -152,9 +152,7 @@ const EmptyState = memo(function EmptyState() {
         </Box>
 
         <Stack direction="row" gap={1} sx={{ opacity: 0.7 }}>
-          <Typography variant="caption"><b>iframe</b> — instant, no backend</Typography>
-          <Typography variant="caption">·</Typography>
-          <Typography variant="caption"><b>emulator</b> — real Chromium with OS chrome</Typography>
+          <Typography variant="caption"><b>iframe</b> — instant, live preview across every viewport</Typography>
         </Stack>
 
         <Typography variant="caption" sx={{ opacity: 0.45, mt: 1 }}>

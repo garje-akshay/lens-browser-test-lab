@@ -36,20 +36,34 @@ export default function ViewBar({ onCapture }) {
     <>
       <Box sx={barSx}>
         <ToggleButtonGroup
-          value={mode}
+          value={mode === 'real' ? 'iframe' : mode}
           exclusive
           size="small"
-          onChange={(_e, v) => v && setMode(v)}
+          onChange={(_e, v) => v && v !== 'real' && setMode(v)}
           sx={{ '& .MuiToggleButton-root': { px: 1.5, gap: 0.75 } }}
         >
           <ToggleButton value="iframe">
             <BoltIcon fontSize="small" />
             iframe
           </ToggleButton>
-          <ToggleButton value="real">
-            <VerifiedIcon fontSize="small" />
-            emulator
-          </ToggleButton>
+          <Tooltip title="Real Chromium emulator with OS chrome — launching soon" placement="bottom">
+            <span>
+              <ToggleButton value="real" disabled sx={{ position: 'relative' }}>
+                <VerifiedIcon fontSize="small" />
+                emulator
+                <Chip
+                  label="Soon"
+                  size="small"
+                  sx={{
+                    ml: 0.75, height: 16, fontSize: 9, fontWeight: 700, letterSpacing: 0.3,
+                    background: 'linear-gradient(135deg, #6366f1, #22d3ee)',
+                    color: '#fff',
+                    '& .MuiChip-label': { px: 0.75 },
+                  }}
+                />
+              </ToggleButton>
+            </span>
+          </Tooltip>
         </ToggleButtonGroup>
 
         <Divider orientation="vertical" flexItem />

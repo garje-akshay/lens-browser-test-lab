@@ -119,6 +119,9 @@ export const useLabStore = create((set, get) => ({
     if (!m) return;
     try {
       const data = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+      // Emulator mode is temporarily disabled — force iframe for any shared
+      // links that captured mode: 'real' before the feature was shipped.
+      if (data.mode === 'real') data.mode = 'iframe';
       set((s) => ({ ...s, ...data, pendingUrl: data.url || s.pendingUrl }));
     } catch {}
   },
