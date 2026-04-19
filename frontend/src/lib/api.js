@@ -66,4 +66,24 @@ export const api = {
     fetch(`${b()}/api/adb/devtools/${encodeURIComponent(serial)}/clear`, { method: 'POST' }).then(j),
   adbDevtoolsHarUrl: (serial) =>
     `${b()}/api/adb/devtools/${encodeURIComponent(serial)}/har`,
+
+  // ---------- Testing controls ----------
+  adbControl: (serial, action, body = {}) =>
+    fetch(`${b()}/api/adb/${encodeURIComponent(serial)}/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then(j),
+  adbListPackages: (serial, filter = '') =>
+    fetch(
+      `${b()}/api/adb/${encodeURIComponent(serial)}/packages${filter ? `?filter=${encodeURIComponent(filter)}` : ''}`
+    ).then(j),
+  adbLogcat: (serial, { lines = 500, pkg = '' } = {}) => {
+    const qs = new URLSearchParams();
+    if (lines) qs.set('lines', String(lines));
+    if (pkg) qs.set('package', pkg);
+    return fetch(`${b()}/api/adb/${encodeURIComponent(serial)}/logcat?${qs.toString()}`).then(j);
+  },
+  adbRecordStopUrl: (serial) =>
+    `${b()}/api/adb/${encodeURIComponent(serial)}/record/stop`,
 };

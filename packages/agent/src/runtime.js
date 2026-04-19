@@ -65,47 +65,94 @@ async function checkPrereqs() {
 
 // ---------- ws-scrcpy first-run install ----------
 
+// Bump this when patchWsScrcpyRedirect() changes so existing installs re-apply.
+const WS_SCRCPY_PATCH_VERSION = '2';
+
 async function ensureWsScrcpy(log) {
   const markerFile = path.join(WS_SCRCPY_DIR, '.installed');
-  if (fs.existsSync(markerFile)) return WS_SCRCPY_DIR;
+  const patchMarker = path.join(WS_SCRCPY_DIR, '.patched');
 
-  log(`ws-scrcpy not found — installing v${WS_SCRCPY_VERSION} (~30 MB)…`);
-  fs.mkdirSync(WS_SCRCPY_DIR, { recursive: true });
+  if (!fs.existsSync(markerFile)) {
+    log(`ws-scrcpy not found — installing v${WS_SCRCPY_VERSION} (~30 MB)…`);
+    fs.mkdirSync(WS_SCRCPY_DIR, { recursive: true });
 
-  const tarballPath = path.join(DATA_DIR, `ws-scrcpy-${WS_SCRCPY_VERSION}.tar.gz`);
-  await download(WS_SCRCPY_URL, tarballPath);
-  log('Downloaded. Extracting…');
+    const tarballPath = path.join(DATA_DIR, `ws-scrcpy-${WS_SCRCPY_VERSION}.tar.gz`);
+    await download(WS_SCRCPY_URL, tarballPath);
+    log('Downloaded. Extracting…');
 
-  await tar.x({ file: tarballPath, cwd: WS_SCRCPY_DIR, strip: 1 });
-  fs.unlinkSync(tarballPath);
+    await tar.x({ file: tarballPath, cwd: WS_SCRCPY_DIR, strip: 1 });
+    fs.unlinkSync(tarballPath);
 
-  log('Installing ws-scrcpy npm dependencies (this takes ~2 min)…');
-  // npm is a #!/usr/bin/env node script — pkg can't interpret shebangs, so we
-  // invoke `node /opt/homebrew/bin/npm …` with the Node binary resolved first.
-  const nodeBin = await resolveBin('node');
-  const npmBin = await resolveBin('npm');
-  await runBlocking(nodeBin, [npmBin, 'install', '--no-audit', '--no-fund'], { cwd: WS_SCRCPY_DIR });
+    log('Installing ws-scrcpy npm dependencies (this takes ~2 min)…');
+    // npm is a #!/usr/bin/env node script — pkg can't interpret shebangs, so we
+    // invoke `node /opt/homebrew/bin/npm …` with the Node binary resolved first.
+    const nodeBin = await resolveBin('node');
+    const npmBin = await resolveBin('npm');
+    await runBlocking(nodeBin, [npmBin, 'install', '--no-audit', '--no-fund'], { cwd: WS_SCRCPY_DIR });
+    fs.writeFileSync(markerFile, WS_SCRCPY_VERSION);
+  }
 
-  // Patch upstream bug: ws-scrcpy invokes scrcpy-server with a redirect in the
-  // wrong order (`2>&1 >/dev/null`), which sends stderr to the terminal fd and
-  // kills the process once adb shell detaches. Swap to `>/dev/null 2>&1`.
-  patchWsScrcpyRedirect(log);
+  // Patch TypeScript sources on first install AND whenever the agent ships a
+  // new patch version. ws-scrcpy's `npm start` runs webpack each launch, so
+  // patching dist/ artifacts would be wiped — we patch the sources instead.
+  const currentPatch = fs.existsSync(patchMarker) ? fs.readFileSync(patchMarker, 'utf8').trim() : '';
+  if (currentPatch !== WS_SCRCPY_PATCH_VERSION) {
+    patchWsScrcpyRedirect(log);
+    // Nuke stale dist so the next `npm start` rebuilds from patched sources.
+    const distDir = path.join(WS_SCRCPY_DIR, 'dist');
+    try { fs.rmSync(distDir, { recursive: true, force: true }); } catch {}
+    fs.writeFileSync(patchMarker, WS_SCRCPY_PATCH_VERSION);
+  }
 
-  fs.writeFileSync(markerFile, WS_SCRCPY_VERSION);
   log('ws-scrcpy ready.');
   return WS_SCRCPY_DIR;
 }
 
 function patchWsScrcpyRedirect(log) {
-  const distPath = path.join(WS_SCRCPY_DIR, 'dist', 'index.js');
-  if (!fs.existsSync(distPath)) return;
-  const before = fs.readFileSync(distPath, 'utf8');
-  const after = before
-    .replace(/2>&1 >\/dev\/null/g, '>/dev/null 2>&1')
-    .replace(/2>&1 > \/dev\/null/g, '> /dev/null 2>&1');
-  if (after !== before) {
-    fs.writeFileSync(distPath, after);
-    log('Patched ws-scrcpy scrcpy-server launch redirect.');
+  // ws-scrcpy's `npm start` runs webpack first, so patching dist/ artifacts is
+  // wiped on every launch. Patch the TypeScript sources instead so the rebuild
+  // bakes the fixes in.
+  const srcDir = path.join(WS_SCRCPY_DIR, 'src');
+
+  // Fix redirect order in the scrcpy-server launch command. The upstream
+  // `2>&1 > /dev/null` sends stderr to the terminal fd and stdout to /dev/null;
+  // when adb shell detaches, the process receives SIGHUP on its stderr and dies.
+  const constantsPath = path.join(srcDir, 'common', 'Constants.ts');
+  if (fs.existsSync(constantsPath)) {
+    const before = fs.readFileSync(constantsPath, 'utf8');
+    const after = before.replace(/2>&1 > \/dev\/null/g, '> /dev/null 2>&1');
+    if (after !== before) {
+      fs.writeFileSync(constantsPath, after);
+      log('Patched ws-scrcpy scrcpy-server launch redirect.');
+    }
+  }
+
+  // Bump each player's preferred video settings from 480x480 @ 0.5 Mbps / 24 fps
+  // to 1280x1280 @ 4 Mbps / 30 fps so streams don't look blurry when scaled
+  // into the Lens device frame (~380px wide on a 1080x2400 source).
+  const playerFiles = [
+    'BasePlayer.ts',
+    'BroadwayPlayer.ts',
+    'MsePlayer.ts',
+    'TinyH264Player.ts',
+    'WebCodecsPlayer.ts',
+  ];
+  let bumped = 0;
+  for (const name of playerFiles) {
+    const p = path.join(srcDir, 'app', 'player', name);
+    if (!fs.existsSync(p)) continue;
+    const before = fs.readFileSync(p, 'utf8');
+    const after = before
+      .replace(/bitrate:\s*524288/g, 'bitrate: 4000000')
+      .replace(/maxFps:\s*24\b/g, 'maxFps: 30')
+      .replace(/new Size\(480,\s*480\)/g, 'new Size(1280, 1280)');
+    if (after !== before) {
+      fs.writeFileSync(p, after);
+      bumped++;
+    }
+  }
+  if (bumped) {
+    log(`Patched ws-scrcpy preferred video settings in ${bumped} players (1280p / 4 Mbps / 30 fps).`);
   }
 }
 

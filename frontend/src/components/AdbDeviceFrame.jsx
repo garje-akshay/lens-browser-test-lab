@@ -6,9 +6,11 @@ import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CloseIcon from '@mui/icons-material/Close';
 import BugReportIcon from '@mui/icons-material/BugReport';
+import TuneIcon from '@mui/icons-material/Tune';
 import { useLabStore } from '../store/useLabStore';
 import { api, getBackendUrl } from '../lib/api';
 import AdbDevtoolsPanel from './AdbDevtoolsPanel';
+import AdbDeviceControls from './AdbDeviceControls';
 
 // ws-scrcpy is reverse-proxied by the backend at /ws-scrcpy — this way users
 // only expose ONE tunnel (the backend) and ws-scrcpy rides through it.
@@ -50,6 +52,7 @@ function AdbDeviceFrame({ serial }) {
   const [pushing, setPushing] = useState(false);
   const [size, setSize] = useState({ w: FRAME_WIDTH, h: Math.round(FRAME_WIDTH * FALLBACK_ASPECT) });
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
+  const [controlsOpen, setControlsOpen] = useState(false);
 
   // Fetch the device's real screen aspect ratio once so the frame matches
   // what scrcpy emits (otherwise we letterbox → visible gap around the video).
@@ -139,6 +142,15 @@ function AdbDeviceFrame({ serial }) {
               </IconButton>
             </span>
           </Tooltip>
+          <Tooltip title={controlsOpen ? 'Hide device controls' : 'Show device controls'}>
+            <IconButton
+              size="small"
+              onClick={() => setControlsOpen((v) => !v)}
+              color={controlsOpen ? 'primary' : 'default'}
+            >
+              <TuneIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Tooltip title={devtoolsOpen ? 'Hide DevTools' : 'Show DevTools (Network / HAR)'}>
             <IconButton
               size="small"
@@ -199,6 +211,24 @@ function AdbDeviceFrame({ serial }) {
         Click inside the frame to interact. URL from the address bar auto-opens on the device.
       </Alert>
     </Stack>
+      {controlsOpen && (
+        <Box
+          sx={{
+            width: 320,
+            height: size.h + 64,
+            bgcolor: 'background.paper',
+            border: '1px solid',
+            borderColor: 'divider',
+            borderRadius: 2,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            flexShrink: 0,
+          }}
+        >
+          <AdbDeviceControls serial={serial} />
+        </Box>
+      )}
       {devtoolsOpen && (
         <Box
           sx={{

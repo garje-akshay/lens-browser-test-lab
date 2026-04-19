@@ -114,4 +114,74 @@ router.get('/screenshot', async (req, res) => {
   }
 });
 
+// ---------- Testing controls ----------
+// Small helper: every control route follows the same "POST /:serial/:action,
+// pull fields from the body, call the service, return {ok:true, ...result}"
+// pattern — this factors it out so we don't repeat the try/catch in every route.
+function control(fn) {
+  return async (req, res) => {
+    const { serial } = req.params;
+    if (!serial) return res.status(400).json({ error: 'serial required' });
+    try {
+      const result = await fn(serial, req.body || {}, req);
+      res.json({ ok: true, ...(result || {}) });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  };
+}
+
+router.post('/:serial/rotate', control((serial, body) => adb.setRotation(serial, body.rotation)));
+router.post('/:serial/dark', control((serial, body) => adb.setDarkMode(serial, body.on)));
+router.post('/:serial/font-scale', control((serial, body) => adb.setFontScale(serial, body.scale)));
+router.post('/:serial/density', control((serial, body) => adb.setDensity(serial, body.density)));
+router.post('/:serial/wifi', control((serial, body) => adb.setWifi(serial, body.on)));
+router.post('/:serial/data', control((serial, body) => adb.setMobileData(serial, body.on)));
+router.post('/:serial/show-touches', control((serial, body) => adb.setShowTouches(serial, body.on)));
+router.post('/:serial/pointer-location', control((serial, body) => adb.setPointerLocation(serial, body.on)));
+router.post('/:serial/battery', control((serial, body) => adb.setBattery(serial, body)));
+router.post('/:serial/keyevent', control((serial, body) => adb.keyevent(serial, body.key)));
+router.post('/:serial/input-text', control((serial, body) => adb.inputText(serial, body.text)));
+router.post('/:serial/clear-app', control((serial, body) => adb.clearAppData(serial, body.package)));
+router.post('/:serial/force-stop', control((serial, body) => adb.forceStop(serial, body.package)));
+router.post('/:serial/launch-app', control((serial, body) => adb.launchApp(serial, body.package)));
+
+router.get('/:serial/packages', async (req, res) => {
+  try {
+    const packages = await adb.listPackages(req.params.serial, req.query.filter || '');
+    res.json({ ok: true, packages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:serial/record/start', control((serial) => adb.startScreenRecord(serial)));
+router.get('/:serial/record/status', (req, res) => {
+  res.json({ ok: true, ...adb.screenRecordStatus(req.params.serial) });
+});
+router.post('/:serial/record/stop', async (req, res) => {
+  const { serial } = req.params;
+  try {
+    const { buffer, filename } = await adb.stopScreenRecord(serial);
+    res.set('Content-Type', 'video/mp4');
+    res.set('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/:serial/logcat', async (req, res) => {
+  try {
+    const out = await adb.getLogcat(req.params.serial, {
+      lines: parseInt(req.query.lines, 10) || 500,
+      pkg: req.query.package || '',
+    });
+    res.json({ ok: true, ...out });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+router.post('/:serial/logcat/clear', control((serial) => adb.clearLogcat(serial)));
+
 module.exports = router;
