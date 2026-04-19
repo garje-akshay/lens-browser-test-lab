@@ -36,10 +36,23 @@ function IframeDeviceFrame({ device }) {
   const [showSettings, setShowSettings] = useState(false);
   const [logs, setLogs] = useState([]);
   const [snapping, setSnapping] = useState(false);
+  const [proxyError, setProxyError] = useState(null);
   const blocked = isLikelyBlocked(url);
 
   const { width, height } = applyOrientation(device.viewport, orientation);
   const src = useProxy ? api.proxyUrl(url) : url;
+
+  // When using the proxy, probe upstream reachability first so we can show a
+  // friendly overlay instead of a raw "Proxy error: ..." page inside the iframe.
+  useEffect(() => {
+    if (!useProxy || blocked) { setProxyError(null); return; }
+    const ctl = new AbortController();
+    let cancelled = false;
+    api.probeProxy(url, ctl.signal)
+      .then((r) => { if (!cancelled) setProxyError(r.ok ? null : (r.error || 'Unreachable')); })
+      .catch(() => { if (!cancelled) setProxyError(null); });
+    return () => { cancelled = true; ctl.abort(); };
+  }, [url, useProxy, blocked, reloadTick]);
 
   useEffect(() => {
     const onMsg = (e) => {
@@ -103,6 +116,8 @@ function IframeDeviceFrame({ device }) {
       >
         {blocked ? (
           <BlockedOverlay width={width} height={height} url={url} />
+        ) : proxyError ? (
+          <BlockedOverlay width={width} height={height} url={url} reason={proxyError} />
         ) : (
           <iframe
             ref={iframeRef}
@@ -200,9 +215,13 @@ export const FrameShell = memo(function FrameShell({
   );
 });
 
-const BlockedOverlay = memo(function BlockedOverlay({ width, height, url }) {
+const BlockedOverlay = memo(function BlockedOverlay({ width, height, url, reason }) {
   let host = '';
   try { host = new URL(url).hostname; } catch {}
+  const title = reason ? `Can't reach ${host}` : `${host} blocks embedding`;
+  const body = reason
+    ? `The proxy couldn't connect (${reason}). This usually means the site firewalls datacenter IPs. Real-device emulator mode (coming soon) will reach it directly.`
+    : 'This site enforces strict anti-framing and bot protection. Real-device emulator mode (coming soon) will render it properly.';
   return (
     <Box sx={{
       width, height, background: '#fff',
@@ -218,10 +237,10 @@ const BlockedOverlay = memo(function BlockedOverlay({ width, height, url }) {
           <LockIcon sx={{ color: 'primary.main' }} />
         </Box>
         <Typography variant="subtitle2" fontWeight={700}>
-          {host} blocks embedding
+          {title}
         </Typography>
         <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.5 }}>
-          This site enforces strict anti-framing and bot protection. Real-device emulator mode (coming soon) will render it properly.
+          {body}
         </Typography>
       </Stack>
     </Box>

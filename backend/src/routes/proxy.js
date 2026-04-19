@@ -160,6 +160,46 @@ function CONSOLE_BRIDGE() {
   } catch (e) {}
 }
 
+// Lightweight reachability probe — just surfaces the same error diagnostics
+// as /fetch without streaming a response body. Used by the frontend so it can
+// show a friendly overlay before rendering the iframe.
+router.get('/probe', async (req, res) => {
+  const target = req.query.url;
+  if (!target || !/^https?:\/\//i.test(target)) {
+    return res.status(400).json({ ok: false, error: 'Invalid url' });
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const upstream = await fetch(target, {
+      method: 'GET',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: { 'user-agent': req.headers['user-agent'] || 'Mozilla/5.0' },
+    });
+    // Don't wait for or read the body — just signal reachability.
+    try { upstream.body?.cancel?.(); } catch {}
+    res.setHeader('access-control-allow-origin', '*');
+    return res.json({ ok: true, status: upstream.status });
+  } catch (err) {
+    const cause = err.cause;
+    const code = cause?.code || cause?.errno;
+    let detail = err.message || 'unknown';
+    if (err.name === 'AbortError') detail = 'Upstream timed out';
+    else if (code === 'ENOTFOUND') detail = `DNS lookup failed`;
+    else if (code === 'ECONNREFUSED') detail = 'Connection refused';
+    else if (code === 'CERT_HAS_EXPIRED') detail = 'TLS certificate expired';
+    else if (code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' || code === 'DEPTH_ZERO_SELF_SIGNED_CERT') {
+      detail = 'TLS certificate invalid';
+    }
+    else if (cause?.message) detail = cause.message;
+    res.setHeader('access-control-allow-origin', '*');
+    return res.status(502).json({ ok: false, error: detail });
+  } finally {
+    clearTimeout(timer);
+  }
+});
+
 router.get('/fetch', async (req, res) => {
   const target = req.query.url;
   if (!target || !/^https?:\/\//i.test(target)) {

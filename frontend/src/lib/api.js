@@ -39,4 +39,11 @@ export const api = {
   clearLogs: (id) => fetch(`${BACKEND}/api/sessions/${id}/logs`, { method: 'DELETE' }).then(j),
 
   proxyUrl: (url) => `${BACKEND}/proxy/fetch?url=${encodeURIComponent(url)}`,
+
+  probeProxy: (url, signal) =>
+    fetch(`${BACKEND}/proxy/probe?url=${encodeURIComponent(url)}`, { signal })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        return { ok: r.ok && data.ok !== false, error: data.error };
+      }),
 };
