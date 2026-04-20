@@ -1,7 +1,6 @@
 const { spawn, execFile } = require('child_process');
 const crypto = require('crypto');
 const { promisify } = require('util');
-const QRCode = require('qrcode');
 const execFileAsync = promisify(execFile);
 
 // One scrcpy process per device serial. The scrcpy CLI renders its own native
@@ -423,10 +422,6 @@ function pairWithPassword(target, password) {
   });
 }
 
-async function qrPayloadToDataUrl(payload) {
-  return QRCode.toDataURL(payload, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
-}
-
 function getQrJob(jobId) {
   const job = qrJobs.get(jobId);
   if (!job) return null;
@@ -500,6 +495,5 @@ module.exports = {
   startQrPairJob,
   getQrJob,
   cancelQrJob,
-  qrPayloadToDataUrl,
   closeAll,
 };

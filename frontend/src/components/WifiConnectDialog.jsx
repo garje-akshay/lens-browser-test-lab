@@ -4,6 +4,7 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField,
   Stack, Typography, Alert, Divider, Box, Tabs, Tab, CircularProgress,
 } from '@mui/material';
+import QRCode from 'qrcode';
 import { api } from '../lib/api';
 
 // Accept "192.168.1.42:37251" or separate values. We split the host:port
@@ -32,7 +33,17 @@ export default function WifiConnectDialog({ open, onClose, onConnected }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [err, setErr] = useState(null);
-  const [qrJob, setQrJob] = useState(null); // { jobId, qrDataUrl, service, state, error }
+  const [qrJob, setQrJob] = useState(null); // { jobId, payload, service, state, error }
+  const [qrDataUrl, setQrDataUrl] = useState('');
+
+  // Render the QR client-side whenever the payload changes — this takes ~5ms
+  // in-browser vs ~1-2s through the server.
+  useEffect(() => {
+    if (!qrJob?.payload) { setQrDataUrl(''); return; }
+    QRCode.toDataURL(qrJob.payload, { margin: 1, width: 320, errorCorrectionLevel: 'M' })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(''));
+  }, [qrJob?.payload]);
 
   // Generate a QR + poll until the phone pairs (or it expires).
   useEffect(() => {
@@ -142,7 +153,9 @@ export default function WifiConnectDialog({ open, onClose, onConnected }) {
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}
                 >
-                  <Box component="img" src={qrJob.qrDataUrl} alt="Pair QR" sx={{ width: '100%', height: '100%' }} />
+                  {qrDataUrl
+                    ? <Box component="img" src={qrDataUrl} alt="Pair QR" sx={{ width: '100%', height: '100%' }} />
+                    : <CircularProgress size={24} />}
                   {qrJob.state === 'pairing' && (
                     <Box sx={{
                       position: 'absolute', inset: 0, bgcolor: 'rgba(0,0,0,0.55)',

@@ -139,11 +139,12 @@ router.post('/wifi/connect', async (req, res) => {
 
 // QR pairing: start returns a jobId + QR image; poll status via /wifi/qr/:jobId
 // to watch it progress awaiting_scan → discovered → pairing → paired.
-router.post('/wifi/qr/start', async (_req, res) => {
+router.post('/wifi/qr/start', (_req, res) => {
   try {
     const job = adb.startQrPairJob();
-    const qrDataUrl = await adb.qrPayloadToDataUrl(job.payload);
-    res.json({ ok: true, jobId: job.jobId, qrDataUrl, service: job.service });
+    // Return the raw payload string — the frontend renders the QR in-browser
+    // (avoids a slow server-side qrcode roundtrip).
+    res.json({ ok: true, jobId: job.jobId, payload: job.payload, service: job.service });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

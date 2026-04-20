@@ -1,6 +1,6 @@
 {
   "name": "@lens/agent",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Lens agent — runs the device backend + ws-scrcpy + tunnel on your machine so the hosted Lens UI can drive your real Android devices.",
   "bin": {
     "lens-agent": "bin/lens-agent.js"
