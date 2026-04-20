@@ -86,4 +86,23 @@ export const api = {
   },
   adbRecordStopUrl: (serial) =>
     `${b()}/api/adb/${encodeURIComponent(serial)}/record/stop`,
+
+  adbWifiPair: (host, port, code) =>
+    fetch(`${b()}/api/adb/wifi/pair`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, port, code }),
+    }).then(j),
+  adbWifiConnect: (host, port) =>
+    fetch(`${b()}/api/adb/wifi/connect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, port }),
+    }).then(j),
+  adbWifiDisconnect: (target) =>
+    fetch(`${b()}/api/adb/wifi/disconnect`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target }),
+    }).then(j),
 };

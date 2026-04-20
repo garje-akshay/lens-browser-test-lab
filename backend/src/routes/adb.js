@@ -114,6 +114,38 @@ router.get('/screenshot', async (req, res) => {
   }
 });
 
+// ---------- Wireless debugging (Android 11+) ----------
+// These are registered BEFORE the /:serial/* routes so Express matches the
+// literal "wifi" prefix instead of treating it as a serial.
+router.post('/wifi/pair', async (req, res) => {
+  const { host, port, code } = req.body || {};
+  try {
+    const r = await adb.wifiPair(host, port, code);
+    res.json({ ok: true, ...r });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/wifi/connect', async (req, res) => {
+  const { host, port } = req.body || {};
+  try {
+    const r = await adb.wifiConnect(host, port);
+    res.json({ ok: true, ...r });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/wifi/disconnect', async (req, res) => {
+  try {
+    const r = await adb.wifiDisconnect(req.body?.target);
+    res.json({ ok: true, ...r });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---------- Testing controls ----------
 // Small helper: every control route follows the same "POST /:serial/:action,
 // pull fields from the body, call the service, return {ok:true, ...result}"

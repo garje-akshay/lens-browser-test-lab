@@ -289,6 +289,57 @@ async function getLogcat(serial, { lines = 500, pkg = '' } = {}) {
   return { log: stdout };
 }
 
+// ---------- Wireless debugging ----------
+// Android 11+ requires a one-time pair with a 6-digit code before connect.
+// The pairing port (usually in the 30000-40000 range) is different from the
+// adb connect port (usually 5555 or another 30000+ port shown at the top of
+// the Wireless debugging screen). We return adb's stdout/stderr so the UI can
+// surface the real failure reason.
+async function wifiPair(host, port, code) {
+  if (!host) throw new Error('host required');
+  if (!port) throw new Error('port required');
+  if (!/^\d{6}$/.test(String(code || ''))) throw new Error('code must be 6 digits');
+  const target = `${host}:${port}`;
+  // Pairing code is read from stdin; execFile doesn't accept input directly,
+  // so we use `spawn` + pipe.
+  return new Promise((resolve, reject) => {
+    const proc = spawn('adb', ['pair', target], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let out = '', err = '';
+    proc.stdout.on('data', (d) => { out += d.toString(); });
+    proc.stderr.on('data', (d) => { err += d.toString(); });
+    proc.on('error', reject);
+    proc.on('close', (rc) => {
+      const text = (out + err).trim();
+      if (rc === 0 && /successfully paired/i.test(text)) resolve({ paired: true, target, message: text });
+      else reject(new Error(text || `adb pair exited ${rc}`));
+    });
+    // `adb pair` prompts "Enter pairing code:" then reads a line.
+    proc.stdin.write(`${code}\n`);
+    proc.stdin.end();
+    setTimeout(() => { try { proc.kill(); } catch {} }, 15000);
+  });
+}
+
+async function wifiConnect(host, port) {
+  if (!host) throw new Error('host required');
+  if (!port) throw new Error('port required');
+  const target = `${host}:${port}`;
+  const { stdout, stderr } = await execFileAsync('adb', ['connect', target], { timeout: 10000 });
+  const text = (stdout + stderr).trim();
+  // adb exits 0 even when it prints "failed to connect" — inspect the message.
+  if (/^connected to/i.test(text) || /already connected/i.test(text)) {
+    return { connected: true, target, message: text };
+  }
+  throw new Error(text || 'adb connect failed');
+}
+
+async function wifiDisconnect(target) {
+  const args = ['disconnect'];
+  if (target) args.push(target);
+  const { stdout, stderr } = await execFileAsync('adb', args, { timeout: 5000 });
+  return { message: (stdout + stderr).trim() };
+}
+
 async function clearLogcat(serial) {
   await execFileAsync('adb', ['-s', serial, 'logcat', '-c'], { timeout: 5000 });
   return { ok: true };
@@ -332,5 +383,8 @@ module.exports = {
   screenRecordStatus,
   getLogcat,
   clearLogcat,
+  wifiPair,
+  wifiConnect,
+  wifiDisconnect,
   closeAll,
 };

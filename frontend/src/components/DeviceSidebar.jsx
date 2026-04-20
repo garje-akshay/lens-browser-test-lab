@@ -7,8 +7,10 @@ import AndroidIcon from '@mui/icons-material/Android';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import WifiIcon from '@mui/icons-material/Wifi';
 import { useLabStore } from '../store/useLabStore';
 import { api } from '../lib/api';
+import WifiConnectDialog from './WifiConnectDialog';
 
 // Lists real Android devices reported by the backend's `adb devices`. Auto-
 // refreshes every 4s so plugging/unplugging a phone is reflected without a
@@ -22,6 +24,7 @@ export default function DeviceSidebar({ collapsed, onToggle }) {
   const toggleAdbDevice = useLabStore((s) => s.toggleAdbDevice);
 
   const [state, setState] = useState({ enabled: null, error: null, loaded: false });
+  const [wifiOpen, setWifiOpen] = useState(false);
 
   const refresh = async () => {
     try {
@@ -72,6 +75,9 @@ export default function DeviceSidebar({ collapsed, onToggle }) {
           <Chip label={adbDevices.length} size="small" color={adbDevices.length ? 'success' : 'default'} />
         </Stack>
         <Stack direction="row">
+          <Tooltip title="Connect over Wi-Fi (Android 11+)">
+            <IconButton size="small" onClick={() => setWifiOpen(true)}><WifiIcon fontSize="small" /></IconButton>
+          </Tooltip>
           <Tooltip title="Refresh">
             <IconButton size="small" onClick={refresh}><RefreshIcon fontSize="small" /></IconButton>
           </Tooltip>
@@ -135,6 +141,11 @@ export default function DeviceSidebar({ collapsed, onToggle }) {
           );
         })}
       </Box>
+      <WifiConnectDialog
+        open={wifiOpen}
+        onClose={() => setWifiOpen(false)}
+        onConnected={refresh}
+      />
     </Box>
   );
 }
