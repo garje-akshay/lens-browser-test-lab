@@ -1,5 +1,7 @@
 const { spawn, execFile } = require('child_process');
+const crypto = require('crypto');
 const { promisify } = require('util');
+const QRCode = require('qrcode');
 const execFileAsync = promisify(execFile);
 
 // One scrcpy process per device serial. The scrcpy CLI renders its own native
@@ -333,6 +335,115 @@ async function wifiConnect(host, port) {
   throw new Error(text || 'adb connect failed');
 }
 
+// QR pairing flow (Android 11+):
+// The phone's "Pair with QR code" camera expects a payload in the exact shape
+// `WIFI:T:ADB;S:<service_name>;P:<password>;;`. When scanned, the phone starts
+// broadcasting an mDNS service `_adb-tls-pairing._tcp` whose instance name
+// equals our <service_name>. We poll `adb mdns services` to find it, then
+// shell `adb pair <host>:<port>` with our <password> on stdin.
+//
+// Everything here keys off `jobId` so the UI can poll status without a
+// websocket. Jobs are kept in memory — restart wipes them.
+const qrJobs = new Map(); // jobId -> { state, service, password, target, error, proc }
+
+function startQrPairJob() {
+  const jobId = crypto.randomBytes(6).toString('hex');
+  const service = `ADB_WIFI_${crypto.randomBytes(4).toString('hex')}`;
+  const password = crypto.randomBytes(8).toString('hex');
+  const payload = `WIFI:T:ADB;S:${service};P:${password};;`;
+  const job = {
+    jobId,
+    state: 'awaiting_scan',
+    service,
+    password,
+    payload,
+    target: null,
+    error: null,
+    startedAt: Date.now(),
+  };
+  qrJobs.set(jobId, job);
+  watchQrJob(job).catch((e) => { job.state = 'error'; job.error = e.message; });
+  // Auto-expire after 5 minutes so stale jobs don't hang forever.
+  setTimeout(() => {
+    if (job.state === 'awaiting_scan' || job.state === 'discovered') {
+      job.state = 'expired';
+      if (job.proc) try { job.proc.kill(); } catch {}
+    }
+  }, 5 * 60 * 1000);
+  return job;
+}
+
+async function watchQrJob(job) {
+  // Poll `adb mdns services` every 1s looking for our instance name. The
+  // output format is:
+  //   ADB_WIFI_abcd1234\t_adb-tls-pairing._tcp\t192.168.1.42:37251
+  // Once we see our service, we shell `adb pair` and feed the password.
+  const deadline = Date.now() + 4 * 60 * 1000; // 4min window to scan
+  while (Date.now() < deadline) {
+    if (job.state === 'expired' || job.state === 'error') return;
+    try {
+      const { stdout } = await execFileAsync('adb', ['mdns', 'services'], { timeout: 5000 });
+      const lines = stdout.split('\n');
+      const match = lines.find((l) => l.includes(job.service) && l.includes('_adb-tls-pairing'));
+      if (match) {
+        // Last whitespace-separated token is host:port.
+        const target = match.trim().split(/\s+/).pop();
+        job.target = target;
+        job.state = 'pairing';
+        await pairWithPassword(target, job.password);
+        job.state = 'paired';
+        // Most phones auto-appear in `adb devices` after pairing (they also
+        // broadcast _adb-tls-connect._tcp which adb picks up automatically).
+        return;
+      }
+    } catch {} // swallow — will retry
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  if (job.state === 'awaiting_scan') {
+    job.state = 'expired';
+    job.error = 'Timed out waiting for scan (4 min).';
+  }
+}
+
+function pairWithPassword(target, password) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn('adb', ['pair', target], { stdio: ['pipe', 'pipe', 'pipe'] });
+    let out = '', err = '';
+    proc.stdout.on('data', (d) => { out += d.toString(); });
+    proc.stderr.on('data', (d) => { err += d.toString(); });
+    proc.on('error', reject);
+    proc.on('close', (rc) => {
+      const text = (out + err).trim();
+      if (rc === 0 && /successfully paired/i.test(text)) resolve({ message: text });
+      else reject(new Error(text || `adb pair exited ${rc}`));
+    });
+    proc.stdin.write(`${password}\n`);
+    proc.stdin.end();
+    setTimeout(() => { try { proc.kill(); } catch {} }, 20000);
+  });
+}
+
+async function qrPayloadToDataUrl(payload) {
+  return QRCode.toDataURL(payload, { margin: 1, width: 320, errorCorrectionLevel: 'M' });
+}
+
+function getQrJob(jobId) {
+  const job = qrJobs.get(jobId);
+  if (!job) return null;
+  // Don't leak the password to the client — the QR image embeds it already.
+  const { password, proc, ...safe } = job;
+  return safe;
+}
+
+function cancelQrJob(jobId) {
+  const job = qrJobs.get(jobId);
+  if (!job) return false;
+  job.state = 'expired';
+  if (job.proc) try { job.proc.kill(); } catch {}
+  qrJobs.delete(jobId);
+  return true;
+}
+
 async function wifiDisconnect(target) {
   const args = ['disconnect'];
   if (target) args.push(target);
@@ -386,5 +497,9 @@ module.exports = {
   wifiPair,
   wifiConnect,
   wifiDisconnect,
+  startQrPairJob,
+  getQrJob,
+  cancelQrJob,
+  qrPayloadToDataUrl,
   closeAll,
 };

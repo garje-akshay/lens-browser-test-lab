@@ -105,4 +105,11 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ target }),
     }).then(j),
+
+  adbWifiQrStart: () =>
+    fetch(`${b()}/api/adb/wifi/qr/start`, { method: 'POST' }).then(j),
+  adbWifiQrStatus: (jobId) =>
+    fetch(`${b()}/api/adb/wifi/qr/${encodeURIComponent(jobId)}`).then(j),
+  adbWifiQrCancel: (jobId) =>
+    fetch(`${b()}/api/adb/wifi/qr/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' }).then(j),
 };

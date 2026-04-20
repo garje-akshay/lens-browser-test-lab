@@ -137,6 +137,29 @@ router.post('/wifi/connect', async (req, res) => {
   }
 });
 
+// QR pairing: start returns a jobId + QR image; poll status via /wifi/qr/:jobId
+// to watch it progress awaiting_scan → discovered → pairing → paired.
+router.post('/wifi/qr/start', async (_req, res) => {
+  try {
+    const job = adb.startQrPairJob();
+    const qrDataUrl = await adb.qrPayloadToDataUrl(job.payload);
+    res.json({ ok: true, jobId: job.jobId, qrDataUrl, service: job.service });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/wifi/qr/:jobId', (req, res) => {
+  const job = adb.getQrJob(req.params.jobId);
+  if (!job) return res.status(404).json({ error: 'job not found' });
+  res.json({ ok: true, ...job });
+});
+
+router.post('/wifi/qr/:jobId/cancel', (req, res) => {
+  const ok = adb.cancelQrJob(req.params.jobId);
+  res.json({ ok });
+});
+
 router.post('/wifi/disconnect', async (req, res) => {
   try {
     const r = await adb.wifiDisconnect(req.body?.target);

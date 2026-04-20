@@ -1,7 +1,7 @@
 class LensAgent < Formula
   desc "Lens agent — run the device backend + ws-scrcpy + tunnel on your Mac"
   homepage "https://github.com/garje-akshay/lens"
-  version "0.1.8"
+  version "0.1.9"
   license "MIT"
 
   # android-platform-tools is a cask, not a formula, so it can't be declared
@@ -25,11 +25,11 @@ class LensAgent < Formula
   on_macos do
     on_arm do
       url "https://github.com/garje-akshay/homebrew-lens/releases/download/v#{version}/lens-agent-arm64"
-      sha256 "eafca4eb98082af9f451c2c29c27d79712be19193f813da8f090b814d50f6fac"
+      sha256 "2411a68565f0de2d2798179b52e15943698604243652a91f933720ad36e893ef"
     end
     on_intel do
       url "https://github.com/garje-akshay/homebrew-lens/releases/download/v#{version}/lens-agent-x64"
-      sha256 "1ede8ed83dd59c2879e2006178f7bf31af5694b74db5e3c3a7633537f45e9e6c"
+      sha256 "2b6e8223098c7f8ba0a2a2c3907ffb0033eb855376a35e8efbfb608b2c3514f6"
     end
   end
 
